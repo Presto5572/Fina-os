@@ -1,0 +1,19 @@
+# --- Security & Secrets (NEVER UPLOAD) ---
+.env
+config/secret.key
+*.key
+
+# --- Local Data (Your Financial DB) ---
+data/
+*.db
+*.sqlite3
+
+# --- Python Clutter ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# --- macOS Clutter ---
+.DS_Store
