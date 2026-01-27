@@ -1,79 +1,122 @@
 import os
 import openai
-from dotenv import load_dotenv
+from dotenv import load_dotenv # Load environment variables
+from datetime import datetime # For timestamping
+from rich.console import Console # Rich console for better CLI UX
+from rich.panel import Panel # For bordered panels
+from rich.table import Table # For tabular data
+from rich.markdown import Markdown # For rendering markdown
+from rich.progress import Progress, SpinnerColumn, TextColumn # For progress spinners
+from rich.prompt import Prompt, IntPrompt # For user prompts
 
 load_dotenv()
 client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+console = Console()
+
+def save_plan_to_file(plan_text):
+    """Saves the generated plan to a local text file."""
+    filename = "investment_blueprint.txt"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    with open(filename, "w") as f:
+        f.write(f"S.H.E.I.L.A. | STRATEGIC INVESTMENT BLUEPRINT\n")
+        f.write(f"Generated: {timestamp}\n")
+        f.write("="*50 + "\n\n")
+        f.write(plan_text)
+        f.write("\n\n" + "="*50 + "\n")
+        f.write("DISCLAIMER: This is an AI-generated simulation for educational purposes only.\n")
+    
+    console.print(f"\n[bold green] Blueprint saved to: {os.path.abspath(filename)}[/bold green]")
 
 def run_architect():
-    print("\n<<< THE ARCHITECT: STRATEGIC PLANNER >>>\n")
-    print("I need to learn about you to design your portfolio framework.")
+    console.clear()
+    console.print(Panel.fit("[bold cyan]THE ARCHITECT[/bold cyan]\n[dim]Strategic Investment Planner[/dim]", border_style="cyan"))
     
-    # 1. The Interview (Input)
+    console.print("\n[bold]I need to scan your financial profile to design your framework.[/bold]\n")
+    
+    # 1. The UX-Enhanced Interview
     try:
-        age = input("1. What is your current age? ")
-        investment_amount = input("2. How much money are you investing today? (e.g., $5,000): ")
-        goal = input("3. What is the primary goal for this money? (e.g., Retirement, House Downpayment, Passive Income): ")
-        risk_reaction = input("4. If the market drops 20% tomorrow, do you (A) Sell everything, (B) Do nothing, or (C) Buy more? [A/B/C]: ")
-        risk_pref = input("5. On a scale from Conservative, Moderate, to Aggressive, how would you describe your risk tolerance? ")
-        horizon = input("6. How many years until you need to spend this money? ")
+        age = IntPrompt.ask("[cyan]1. What is your current age?[/cyan]")
+        capital = Prompt.ask("[cyan]2. How much money are you investing today?[/cyan] (e.g. $5,000)")
+        goal = Prompt.ask("[cyan]3. Primary Goal[/cyan]", choices=["Retirement", "House", "Passive Income", "Growth"], default="Retirement")
+        
+        console.print("\n[yellow]4. Market Crash Simulation[/yellow]")
+        console.print("[dim]   The market drops 20% tomorrow. You lose $5,000.[/dim]")
+        risk_reaction = Prompt.ask("[cyan]   Do you[/cyan]", choices=["Sell", "Hold", "Buy More"], default="Hold")
+        
+        horizon = IntPrompt.ask("\n[cyan]5. Time Horizon (Years)[/cyan]")
+        
     except KeyboardInterrupt:
         return
-
-    print("\n---> S.H.E.I.L.A. is drafting your Investment Policy Statement (IPS)...")
 
     # 2. The Logic (AI Processing)
     prompt = f"""
     <ROLE>
     You are S.H.E.I.L.A., a conservative, logic-driven financial planner. You follow Boglehead (passive indexing) philosophies.
-    You are NOT a financial advisor. Always include a disclaimer.
     
     <USER PROFILE>
     - Age: {age}
-    - Investment Amount: {investment_amount}(e.g. $5,000)
-    - Goal: {goal} (e.g., Retirement, House Downpayment, Passive Income, College Fund)
-    - Risk Reaction: {risk_reaction} (A=Panic, B=Neutral, C=Aggressive)
-    - Risk Preference: {risk_pref} (Conservative, Moderate, Aggressive)
-    - Time Horizon: {horizon} years
+    - Capital: {capital}
+    - Goal: {goal}
+    - Risk Reaction: {risk_reaction}
+    - Horizon: {horizon} years
     
-
     <TASK>
-    Create a "Portfolio Framework" for this user.
-    1. Define their "Investor Archetype" (e.g., Aggressive Accumulator, Preservationist).
-    2. Recommend a specific Asset Allocation (Stocks, Bonds, Alternatives, Cash) in percentages.
-    3. Recommend specific low-cost ETFs (Vanguard/Blackrock) to fill those buckets.
-    4. Explain WHY this mix fits their goal.
+    Create a "Portfolio Framework" (Investment Policy Statement).
     
-    <OUTPUT FORMAT>
-    >> Archetype: [Name]
-    >> Target Allocation: [X]% Stocks / [Y]% Bonds / [Z]% Alternatives / [W]% Cash
-    >> The Blueprint:
-      - [Ticker] ([Name]): [Percentage]% (Reason)
-      - [Ticker] ([Name]): [Percentage]% (Reason)
-        ...
-    >> Rationale: [One sentence explanation]
+    <OUTPUT FORMATTING RULES>
+    1. Use Markdown headers (###) for sections.
+    2. Use a Markdown Table for the "Target Allocation".
+    3. Use a Markdown Table for "The Blueprint" (Columns: Ticker, Name, %, Rationale).
+    4. Keep the rationale concise.
+    
+    <OUTPUT STRUCTURE>
+    ### Investor Archetype: [Name]
+    
+    ### Target Allocation
+    | Asset Class | Percentage |
+    | :--- | :--- |
+    | Stocks | X% |
+    | Bonds | Y% |
+    | ... | ... |
+
+    ### The Blueprint
+    | Ticker | Asset Name | Allocation | Logic |
+    | :--- | :--- | :--- | :--- |
+    | **VTI** | Total US Stock | 40% | Core growth engine |
+    
+    ### Strategy Note
+    [One sentence explanation]
+    
+    *Disclaimer: Uncertified recommendation simulation only.*
     """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o", # Use GPT-4 for "Thinking" tasks if available, or mini
-            messages=[
-                {"role": "system", "content": "You are an expert asset allocator."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3
-        )
-        plan = response.choices[0].message.content.strip()
+    print("\n")
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold cyan]S.H.E.I.L.A. is drafting your Investment Policy Statement...[/bold cyan]"),
+        transient=True
+    ) as progress:
+        progress.add_task("thinking", total=None)
         
-        print("\n" + "="*40)
-        print(plan)
-        print("="*40 + "\n")
-        
-        # Future Step: We could save this "Target Allocation" to the database
-        # vault.save_target(plan) 
-        
-    except Exception as e:
-        print(f"Error generating plan: {e}")
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a financial planning engine. Output only Markdown."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3
+            )
+            plan = response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            console.print(f"[red]Error generating plan: {e}[/red]")
+            return
+
+    # 3. The Render (Beautiful Markdown)
+    console.print(Panel(Markdown(plan), title="[bold cyan]Your Strategic Blueprint[/bold cyan]", border_style="green"))
+    save_plan_to_file(plan)
 
 if __name__ == "__main__":
     run_architect()

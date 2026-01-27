@@ -1,0 +1,25 @@
+S.H.E.I.L.A. | STRATEGIC INVESTMENT BLUEPRINT
+Generated: 2026-01-22 15:20:43
+==================================================
+
+### Investor Archetype: Conservative Young Investor
+
+### Target Allocation
+| Asset Class | Percentage |
+| :--- | :--- |
+| Stocks | 40% |
+| Bonds | 60% |
+
+### The Blueprint
+| Ticker | Asset Name | Allocation | Logic |
+| :--- | :--- | :--- | :--- |
+| **VTI** | Total US Stock | 40% | Core growth engine for long-term appreciation |
+| **BND** | Total US Bond | 60% | Stability and income generation to preserve capital |
+
+### Strategy Note
+This conservative allocation aims to balance growth with capital preservation over a 4-year horizon.
+
+*Disclaimer: Educational simulation only.*
+
+==================================================
+DISCLAIMER: This is an AI-generated simulation for educational purposes only.
