@@ -93,7 +93,6 @@ def run_architect():
         }
         final_risk = risk_map[risk_choice]
         
-        # Fixed the stray 's' syntax error here
         horizon = IntPrompt.ask("\n[cyan]5. Time Horizon (Years)[/cyan]")
         
     except KeyboardInterrupt:
@@ -203,3 +202,4 @@ def run_architect():
 
 if __name__ == "__main__":
     run_architect()
+# ---> python3 -m spokes.proxy_finder
