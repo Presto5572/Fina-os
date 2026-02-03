@@ -1,178 +1,189 @@
-from spokes.proxy_finder import get_proxy_suggestion
-
 import yfinance as yf
-from core.database import SheilaVault
+import pandas as pd
+import sqlite3
 import time
-import re
+from datetime import datetime
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.align import Align
+from rich import box
+from core.database import SheilaVault
 
-# CONFIGURATION
-LOSS_THRESHOLD = -.01  # We look for assets down 5% or more
-MIN_HARVEST_AMOUNT = 0  # Only bother if we can harvest $1,000+ in losses
+# --- CONFIGURATION ---
+LOSS_THRESHOLD = -0.05       # Trigger alert if asset is down 5%
+MIN_HARVEST_AMOUNT = 100.00  # Only harvest if loss is > $100 (Save on fees/effort)
+# ---------------------
+
+console = Console()
+
+def fetch_current_prices(tickers):
+    """
+    Fetches live prices for a list of tickers using yfinance.
+    """
+    if not tickers:
+        return {}
+    
+    # Map crypto if needed (Yahoo requires -USD suffix)
+    search_tickers = []
+    for t in tickers:
+        if t in ['BTC', 'ETH', 'LTC']:
+            search_tickers.append(f"{t}-USD")
+        else:
+            search_tickers.append(t)
+            
+    try:
+        # Download 1 day of data
+        data = yf.download(search_tickers, period="1d", progress=False)['Close']
+        
+        prices = {}
+        
+        # If we requested 1 ticker, it returns a Series
+        if len(search_tickers) == 1:
+            val = data.iloc[-1].item() if not data.empty else None
+            prices[search_tickers[0]] = val
+        else:
+            # Multi-ticker DataFrame
+            last_row = data.iloc[-1]
+            for t in search_tickers:
+                try:
+                    price = last_row[t]
+                    if pd.notna(price):
+                        prices[t] = price
+                except KeyError:
+                    pass
+                    
+        return prices
+    except Exception as e:
+        console.print(f"[red]API Error:[/red] {e}")
+        return {}
 
 def run_tax_scout():
-    print("\n<<< TAX SCOUT HARVESTER >>>\n")
-    print("---> Scanning portfolio for harvest opportunities...")
-    vault = SheilaVault()
+    console.clear()
     
-    # 1. Fetch all holdings
-    vault.cursor.execute("SELECT ticker, quantity, cost_basis, current_price FROM holdings")
-    holdings = vault.cursor.fetchall()
+    # HEADER UI
+    console.print(Panel.fit(
+        Align.center("[bold green]TAX SCOUT[/bold green]\n[dim]Loss Harvesting Engine[/dim]"),
+        border_style="green",
+        padding=(1, 2)
+    ))
+    
+    vault = SheilaVault()
+    console.print("\n[bold]1. Scanning Portfolio Database...[/bold]")
+    
+    # 1. GET HOLDINGS (FIXED COLUMN NAME)
+    try:
+        vault.cursor.execute("SELECT ticker, quantity, cost_basis FROM holdings")
+        holdings = vault.cursor.fetchall()
+    except sqlite3.OperationalError as e:
+        console.print(f"[bold red]Database Error:[/bold red] {e}")
+        console.print("[yellow]Tip: Run 'clean_db.py' and 'setup_server.py' to reset your schema if this persists.[/yellow]")
+        return
     
     if not holdings:
-        print("[X] Error: No holdings found. Please link a Brokerage account.")
+        console.print("[yellow]   No holdings found in database. Run 'setup_server.py' or check DB.[/yellow]")
         return
 
-    # 2. Group by Ticker & Clean Data
-    portfolio = {}
-    print(f"\n---> Analyzing {len(holdings)} raw positions...")
-
-    for h in holdings:
-        # RAW DATA
-        raw_ticker = h[0]
-        qty = float(h[1])     
-        raw_basis = float(h[2]) if h[2] else 0.0 
-        
-        # CLEANUP: Remove whitespace/newlines
-        if not raw_ticker: continue
-        ticker = raw_ticker.strip().upper() 
-        
-        # MATH FIX: Calculate Total Lot Cost
-        # Assuming DB stores 'Cost Basis Per Share'
-        total_lot_cost = raw_basis * qty 
-        
-        if ticker not in portfolio:
-            portfolio[ticker] = {'qty': 0.0, 'total_basis': 0.0}
-        
-        portfolio[ticker]['qty'] += qty
-        portfolio[ticker]['total_basis'] += total_lot_cost
-
-    # 3. The Bouncer (Map & Filter)
-    TICKER_MAP = {
-        'BTC': 'BTC-USD',
-        'ETH': 'ETH-USD',
-        'LTC': 'LTC-USD'
-    }
-
-    raw_tickers = list(portfolio.keys())
-    search_tickers = []
-    reverse_map = {}
-
-    print(f"---> Filtering {len(raw_tickers)} unique tickers...")
+    # Clean list of tickers
+    active_tickers = [h[0] for h in holdings if h[0] and h[0] != 'UNKNOWN']
     
-    for t in raw_tickers:
-        if not t or t == "UNKNOWN": continue
+    # 2. FETCH PRICES
+    current_prices = {}
+    with Progress(
+        SpinnerColumn(),
+        BarColumn(),
+        TextColumn("[cyan]Fetching live market data for {task.total} assets...[/cyan]"),
+        transient=True
+    ) as progress:
+        task = progress.add_task("download", total=len(active_tickers))
         
-        # Check Map first
-        if t in TICKER_MAP:
-            mapped = TICKER_MAP[t]
-            search_tickers.append(mapped)
-            reverse_map[mapped] = t
-            continue
-
-        # Filter Junk (Options/Internal IDs)
-        if len(t) > 6 or re.search(r'\d{3,}', t):
-            # Allow common exceptions if needed, otherwise skip
-            print(f"     [Skip] Ignoring likely non-equity asset: {t}")
-            continue
+        raw_prices = fetch_current_prices(active_tickers)
+        
+        for _ in active_tickers:
+            time.sleep(0.05) 
+            progress.advance(task)
             
-        search_tickers.append(t)
-        reverse_map[t] = t
+        current_prices = raw_prices
 
-    print(f"---> Fetching prices for {len(search_tickers)} valid assets (checking last 5 days)...")
+    # 3. CALCULATE & RENDER
+    console.print("\n[bold]2. Analysis Results[/bold]\n")
     
-    if not search_tickers:
-        print("[!] No valid tickers found to check.")
-        return
-
-    # 4. Download Market Data
-    try:
-        data_payload = yf.download(search_tickers + ['SPY'], period="5d", progress=False)
+    table = Table(title="Harvest Opportunities", box=box.SIMPLE_HEAD, show_lines=False)
+    table.add_column("Asset", style="bold white")
+    table.add_column("Position", justify="right")
+    table.add_column("Current Price", justify="right")
+    table.add_column("Gain/Loss", justify="right")
+    table.add_column("Status", justify="center")
+    
+    harvest_candidates = []
+    
+    for row in holdings:
+        ticker, qty, total_cost_basis = row
         
-        if 'Close' in data_payload:
-            price_history = data_payload['Close']
-        else:
-            price_history = data_payload
-            
-    except Exception as e:
-        print(f"[X] Error: Market Data Incorrect {e}")
-        return
-
-    # 5. The Math (The "Alpha" Logic)
-    harvest_opportunities = []
-    print("---> Calculating performance...")
-
-    for search_ticker in search_tickers:
-        original_ticker = reverse_map.get(search_ticker, search_ticker)
-        
-        if original_ticker not in portfolio: continue 
-
-        position = portfolio[original_ticker]
-        qty = position['qty']
-        total_basis = position['total_basis']
-        
-        # Get Price
-        try:
-            if search_ticker in price_history.columns:
-                series = price_history[search_ticker]
-            elif search_ticker in price_history.index: 
-                 series = price_history
-            else:
-                print(f"     [?] No data returned for {original_ticker}")
-                continue
-
-            # Get last valid price (handles Mutual Funds)
-            clean_series = series.dropna()
-            if clean_series.empty:
-                print(f"     [?] {original_ticker} returned empty data (Delisted?).")
-                continue
-            live_price = float(clean_series.iloc[-1])
-
-        except Exception as e:
-            print(f"     [!] Error calc for {original_ticker}: {e}")
+        if not ticker or ticker == 'UNKNOWN': 
             continue
 
-        # Calculate Gain/Loss
-        current_value = qty * live_price
-        total_gain_loss = current_value - total_basis
-        pct_gain_loss = (total_gain_loss / total_basis) if total_basis > 0 else 0
-
-        # Decision Matrix
-        if pct_gain_loss <= LOSS_THRESHOLD: 
-            if total_gain_loss < -(MIN_HARVEST_AMOUNT / 10): # Scaled down for testing
-                harvest_opportunities.append({
-                    'ticker': original_ticker,
-                    'loss_amount': total_gain_loss,
-                    'pct_loss': pct_gain_loss * 100
-                })
-                print(f"   DETECTED: {original_ticker} is down {pct_gain_loss*100:.2f}% (Loss: ${total_gain_loss:.2f})")
-            else:
-                 print(f"   {original_ticker} is down, but only ${total_gain_loss:.2f}. Holding.")
+        # Derived Average Cost (Price per share)
+        # Handle division by zero just in case
+        avg_cost = total_cost_basis / qty if qty else 0
+            
+        lookup_ticker = f"{ticker}-USD" if ticker in ['BTC', 'ETH'] else ticker
+        live_price = current_prices.get(lookup_ticker)
+        
+        if live_price:
+            market_val = live_price * qty
+            # We use the explicit Total Cost Basis from DB
+            gain_loss_amt = market_val - total_cost_basis
+            
+            # Calculate % change
+            gain_loss_pct = (live_price - avg_cost) / avg_cost if avg_cost > 0 else 0
+            
+            # FORMATTING
+            color = "green" if gain_loss_amt >= 0 else "red"
+            fmt_amt = f"[{color}]${gain_loss_amt:,.2f}[/{color}]"
+            fmt_pct = f"[{color}]{gain_loss_pct*100:+.2f}%[/{color}]"
+            
+            # DECISION LOGIC
+            status = "[dim]Hold[/dim]"
+            
+            if gain_loss_pct <= LOSS_THRESHOLD and gain_loss_amt <= -MIN_HARVEST_AMOUNT:
+                status = "[bold red]HARVEST[/bold red]"
+                harvest_candidates.append((ticker, gain_loss_amt))
+            elif gain_loss_amt < 0:
+                status = "[yellow]Watch[/yellow]"
+            elif gain_loss_amt > 0:
+                status = "[green]Healthy[/green]"
+            
+            table.add_row(
+                ticker,
+                f"${total_cost_basis:,.0f}",
+                f"${live_price:,.2f}",
+                f"{fmt_amt} ({fmt_pct})",
+                status
+            )
         else:
-            if pct_gain_loss >= 0:
-                print(f"   {original_ticker} is healthy (+{pct_gain_loss*100:.2f}%).")
-            else:
-                print(f"   {original_ticker} is stable (Down {pct_gain_loss*100:.2f}% - No action needed).")
+            table.add_row(ticker, "---", "---", "---", "[bold red]⚠️ Data Err[/bold red]")
 
-    # 6. Report
-    print("\n--- HARVEST REPORT ---\n")
-    if harvest_opportunities:
-        for opp in harvest_opportunities:
-            ticker = opp['ticker']
-            loss = abs(opp['loss_amount'])
-            
-            # CALL THE PROXY FINDER
-            proxy_advice = get_proxy_suggestion(ticker)
-            
-            print(f"RECOMMENDATION: Sell {ticker} to harvest ${loss:.2f} in losses.")
-            print(f"   RECOVERY PLAN: Buy {proxy_advice}")
-            print("-" * 40)
-            
-            vault.log_action("TAX_SCOUT", "HARVEST_ALERT", f"Found loss in {ticker}. Suggested: {proxy_advice}")
+    console.print(Align.center(table))
+    
+    # 4. ACTION REPORT
+    if harvest_candidates:
+        total_potential_loss = sum([x[1] for x in harvest_candidates])
+        
+        summary_panel = Panel(
+            f"[bold]Detected {len(harvest_candidates)} opportunities.[/bold]\n"
+            f"Total Tax Deduction Available: [bold red]${total_potential_loss:,.2f}[/bold red]\n\n"
+            "[italic]Recommendation: Review these positions for replacement.[/italic]",
+            title="[bold red]ACTION REQUIRED[/bold red]",
+            border_style="red"
+        )
+        console.print("\n")
+        console.print(Align.center(summary_panel))
     else:
-        print("All positions are currently stable or profitable. No harvest needed.")
+        console.print("\n[bold green]✅ Portfolio is efficient. No significant losses to harvest.[/bold green]")
 
     vault.close()
 
 if __name__ == "__main__":
     run_tax_scout()
-# ---> python3 -m spokes.tax_scout

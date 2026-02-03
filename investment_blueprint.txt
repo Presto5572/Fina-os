@@ -1,17 +1,21 @@
 S.H.E.I.L.A. | STRATEGIC INVESTMENT BLUEPRINT
-Generated: 2026-01-27 20:35:35
+Generated: 2026-02-02 20:16:47
 ==================================================
-Archetype: Conservative Growth
-Rationale: This portfolio aims to balance growth with capital preservation, suitable for a medium risk tolerance.
+Archetype: House Hunter Portfolio
+Rationale: This portfolio balances growth and stability to facilitate a house downpayment in 4 years while respecting the medium risk tolerance.
 
 --- TARGET ALLOCATION ---
-Stocks: 40%
-Bonds: 50%
-Cash: 10%
+Equities: 60%
+Fixed Income: 30%
+Real Assets: 5%
+Cash: 5%
 
 --- THE BLUEPRINT ---
-VTI (Total Stock Market): 40% - Core growth engine
-BND (Total Bond Market): 50% - Provides stability and income
-SHV (Short-Term Treasury Bonds): 10% - Liquidity and safety
+VHT (Vanguard Health Care ETF): 30% - Healthcare is a resilient sector that offers growth potential, especially important for a medium-term horizon.
+SOXX (iShares PHLX Semiconductor ETF): 30% - Semiconductors are crucial for technology and innovation, making them a solid growth investment.
+AGG (iShares Core U.S. Aggregate Bond ETF): 30% - This provides broad exposure to the fixed income market, contributing to portfolio stability.
+BND (Vanguard Total Bond Market ETF): 30% - Another layer of fixed income exposure helps mitigate risks, ensuring capital preservation.
+O (Realty Income Corporation): 5% - A reliable REIT that provides monthly dividends, adding a touch of real assets for income generation.
+CASH (High Yield Savings Account): 5% - Maintaining liquidity is essential for a downpayment, ensuring funds are readily available.
 
 ==================================================
